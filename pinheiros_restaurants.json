@@ -1,0 +1,170 @@
+[
+  {
+    "name": "Gael Cozinha Mestiça",
+    "address": "Rua Ferreira de Araújo, 322 – Pinheiros, São Paulo",
+    "neighborhood": "Pinheiros",
+    "cuisine": ["cozinha mestiça", "charcutaria", "japonesa"],
+    "price_level": "$$$",
+    "accepts_voucher": true,
+    "diet_options": ["vegetarian"],
+    "accessibility": null,
+    "highlights": [
+      "Charcutaria própria com produtos como coppa, pancetta e guanciale",
+      "Menu japonês com sunomono, carpaccio, nigiri, makimono e sashimi",
+      "Ambiente acolhedor com padoca e jardim"
+    ],
+    "description": "Aberto no final de 2019, o Gael oferece uma mistura de padaria, restaurante e charcutaria. O ambiente ocupa três casas conectadas com um jardim e uma ‘sala da vovó’. O cardápio atravessa diferentes cozinhas, incluindo charcutaria, café da manhã, brunch e, mais recentemente, um menu japonês, além de uma carta de coquetéis criada por Alê D’Agostino【346460230761069†L39-L43】【346460230761069†L67-L75】.",
+    "hours": "Seg‑Sex 12:00‑15:00 & 19:00‑22:00; Sáb 12:00‑17:00 & 19:00‑22:00; Dom 12:00‑18:00【346460230761069†L39-L43】"
+  },
+  {
+    "name": "Otoshi Izakaya",
+    "address": "Rua Padre Carvalho, 335 – Pinheiros, São Paulo",
+    "neighborhood": "Pinheiros",
+    "cuisine": ["izakaya", "japonesa"],
+    "price_level": "$$",
+    "accepts_voucher": null,
+    "diet_options": null,
+    "accessibility": null,
+    "highlights": [
+      "Bar japonês (izakaya) com pratos tradicionais e bebida",
+      "Ambiente informal inspirado nos bares de Tóquio"
+    ],
+    "description": "O Otoshi é um izakaya no coração de Pinheiros. Localizado na Rua Padre Carvalho, serve uma variedade de petiscos e pratos quentes japoneses em um ambiente descontraído, típico dos bares nipônicos. O restaurante funciona no almoço e jantar de segunda a sábado【857829640682432†L78-L143】.",
+    "hours": "Seg‑Sáb 11:30‑15:00 & 18:30‑22:00; fechado aos domingos【857829640682432†L78-L143】"
+  },
+  {
+    "name": "Jojo Ramen (Pinheiros)",
+    "address": "Rua Padre de Carvalho, 159 – Pinheiros, São Paulo",
+    "neighborhood": "Pinheiros",
+    "cuisine": ["ramen", "japonesa"],
+    "price_level": "$$",
+    "accepts_voucher": null,
+    "diet_options": null,
+    "accessibility": null,
+    "highlights": [
+      "Lámen preparado com noodles finos produzidos na casa",
+      "Shoyu ramen com porco, broto de bambu, cebolinha, nori e ovo marinado"
+    ],
+    "description": "O Jojo Ramen abriu sua quarta unidade em Pinheiros em 2023. A casa é conhecida por seus caldos bem elaborados e lámen com noodles produzidos localmente. Entre os destaques está o shoyu ramen, servido com carne de porco, broto de bambu, cebolinha, nori e ovo marinado por R$ 62【762260638210557†L121-L129】.",
+    "hours": null
+  },
+  {
+    "name": "Modern Mamma Osteria (Moma) – Pinheiros",
+    "address": "Rua Ferreira de Araújo, 342 – Pinheiros, São Paulo",
+    "neighborhood": "Pinheiros",
+    "cuisine": ["italiana", "trattoria"],
+    "price_level": "$$$",
+    "accepts_voucher": null,
+    "diet_options": ["vegetarian"],
+    "accessibility": true,
+    "highlights": [
+      "Nhoque frito recheado de vitelo servido com sugo",
+      "Mil‑folhas de lasanha com muçarela de búfala e creme de cogumelos",
+      "Polpettone grelhado no carvão com recheio de muçarela"
+    ],
+    "description": "A trattoria montada pelos chefs Salvatore Loi e Paulo Barros abriu unidade em Pinheiros. O Moma serve massas artesanais e pratos de inspiração italiana contemporânea. Pratos como nhoque de vitelo ao sugo (R$ 65 para dois) e mil‑folhas de lasanha (R$ 88) são destaques; o polpettone grelhado com muçarela sai por R$ 96【50993967964221†L118-L127】. O espaço tem acesso para pessoas com deficiência e capacidade para 110 lugares【50993967964221†L81-L104】.",
+    "hours": "Seg‑Qui 12:00‑15:00 & 18:30‑23:00; Sex 12:00‑16:00 & 18:30‑23:00; Sáb 12:00‑23:00; Dom 12:00‑21:00【50993967964221†L88-L100】"
+  },
+  {
+    "name": "Momokuri",
+    "address": "Rua Vupabussu, 91 – Pinheiros, São Paulo",
+    "neighborhood": "Pinheiros",
+    "cuisine": ["izakaya", "asiática", "fusion"],
+    "price_level": "$$",
+    "accepts_voucher": null,
+    "diet_options": ["vegetarian"],
+    "accessibility": null,
+    "highlights": [
+      "Berinjela empanada (R$ 37), guioza (R$ 36), rolinho primavera (R$ 38)",
+      "Bao de porco (R$ 23) e Sandovo – omelete empanada (R$ 45)",
+      "Lámen e noodles asiáticos"
+    ],
+    "description": "Criado por Mônica Cury, o Momokuri é um izakaya vibrante com música, drinques caprichados e menu de influência asiática. Os petiscos variam de berinjela empanada a camarão frito e bao de porco. Há noodles, lamen e sanduíches como o Sandovo (omelete empanada) e bao de porco; os preços variam de R$ 23 a R$ 56【362311837066372†L56-L66】【362311837066372†L90-L104】. A casa funciona em diferentes horários ao longo da semana【362311837066372†L124-L126】.",
+    "hours": "Ter‑Qua 17:30‑00:00; Qui‑Sex 17:30‑01:00; Sáb 12:00‑01:00; Dom 12:00‑19:00; fechado às segundas【362311837066372†L124-L126】"
+  },
+  {
+    "name": "Arlete Bar e Mercearia",
+    "address": "Rua Vupabussu, 101 – Pinheiros, São Paulo",
+    "neighborhood": "Pinheiros",
+    "cuisine": ["bar", "petiscos", "brasileira"],
+    "price_level": "$$",
+    "accepts_voucher": null,
+    "diet_options": ["vegetarian"],
+    "accessibility": null,
+    "highlights": [
+      "Petiscos variados, crudos, sanduíches e pratos principais",
+      "Bebidas autorais e clima de mercearia",
+      "Área aberta e atmosfera aconchegante"
+    ],
+    "description": "Inaugurado em 2018, o Arlete nasceu da vontade de Mônica Cury de ter um bar com área aberta, clima caseiro e bons drinques. O cardápio traz petiscos, crudos, sanduíches, principais e sobremesas; a casa ocupa a Rua Vupabussu e funciona do final da tarde até a madrugada em alguns dias【901470991475751†L290-L319】.",
+    "hours": "Ter 17:30‑00:00; Qua‑Sex 17:30‑01:00; Sáb 13:00‑01:00; Dom 13:00‑20:00; fechado às segundas【901470991475751†L290-L319】"
+  },
+  {
+    "name": "Pirajá (Faria Lima)",
+    "address": "Av. Brigadeiro Faria Lima, 64 – Pinheiros, São Paulo",
+    "neighborhood": "Pinheiros",
+    "cuisine": ["bar", "carioca", "petiscos"],
+    "price_level": "$$",
+    "accepts_voucher": null,
+    "diet_options": null,
+    "accessibility": null,
+    "highlights": [
+      "Petiscos cariocas como torresmo de barriga, croquete de costela e chips de copa",
+      "Chopp no padrão original",
+      "Ambiente inspirado em bares do Rio com calçadas de Ipanema e samba"
+    ],
+    "description": "A casa carioca Pirajá nasceu em 1998 e se tornou referência para ‘baixa gastronomia’. A filial da Faria Lima serve chopp no padrão original e petiscos típicos como torresmo de barriga, croquete de costela e chips de copa, em ambiente inspirado nos botequins do Rio de Janeiro com mosaicos da calçada de Ipanema e samba de fundo【495770463395495†L291-L332】.",
+    "hours": "Seg 12:00‑23:00; Ter‑Qua 12:00‑00:00; Qui 12:00‑01:00; Sex‑Sáb 12:00‑02:00; Dom 12:00‑19:00【495770463395495†L291-L332】"
+  },
+  {
+    "name": "Buzina Burgers (Baixo Pinheiros)",
+    "address": "Rua Padre Carvalho, 30 – Pinheiros, São Paulo",
+    "neighborhood": "Pinheiros",
+    "cuisine": ["hambúrguer", "fast food"],
+    "price_level": "$$",
+    "accepts_voucher": null,
+    "diet_options": ["vegetarian"],
+    "accessibility": null,
+    "highlights": [
+      "Hambúrgueres clássicos como X‑Burger, X‑Salada, X‑Bacon e Parm Burger",
+      "Sanduíches veggie e de frango, além de salada",
+      "Batatas fritas com páprica e frango empanado"
+    ],
+    "description": "O Buzina começou como food truck e ganhou sede fixa em Baixo Pinheiros. O cardápio traz nove hambúrgueres, incluindo X‑Burger, X‑Salada, X‑Bacon, Parm Burger com parmesão ralado, além de versões com frango e vegetarianas; há também salada. As batatas fritas com páprica e o frango empanado são destaques, servidos em ambiente moderno com mesas altas e área externa【407613361523894†L58-L74】【407613361523894†L94-L104】.",
+    "hours": "Seg‑Qui 12:00‑15:30 & 23:00; Sex 12:00‑15:30 & 18:00‑00:00; Sáb 12:00‑00:00; Dom 12:00‑23:00【407613361523894†L94-L104】【407613361523894†L111-L114】"
+  },
+  {
+    "name": "Notorious Fish",
+    "address": "Rua Padre Carvalho, 123 – Pinheiros, São Paulo",
+    "neighborhood": "Pinheiros",
+    "cuisine": ["frutos do mar", "sandwiches", "bar"],
+    "price_level": "$$$",
+    "accepts_voucher": null,
+    "diet_options": ["pescatarian", "vegetarian"],
+    "accessibility": null,
+    "highlights": [
+      "Sanduíche Choripolvo com polvo, chimichurri e aioli (R$ 65)",
+      "The Notorious Filet’O Fish com pollock empanado (R$ 33)",
+      "Porções como torresmo de lula, pipoca de camarão e fish’N’chips"
+    ],
+    "description": "O Notorious Fish começou como delivery em 2020 e ganhou sede própria em Baixo Pinheiros. No cardápio, sanduíches como o Choripolvo (polvo com chimichurri e aioli), The Notorious Filet’O Fish (pollock empanado com cheddar e molho tártaro), Siri Burger (R$ 35), Tuna Sandwich, Lobster Roll (R$ 88), Tuna Burger e porções como torresmo de lula, pipoca de camarão, shrimp corndog e fish’n’chips. A nova casa tem terraço envidraçado, bar e salão colorido com cozinha aberta【25179632442797†L60-L90】【25179632442797†L111-L129】.",
+    "hours": "Seg‑Qui 12:00‑15:00 & 18:00‑23:00; Sex‑Sáb 12:00‑00:00; Dom 12:00‑22:00【25179632442797†L111-L129】【25179632442797†L145-L147】"
+  },
+  {
+    "name": "Hi Pokee – Pinheiros",
+    "address": "Rua Cônego Eugênio Leite, 1164 – Pinheiros, São Paulo",
+    "neighborhood": "Pinheiros",
+    "cuisine": ["poke", "japonesa", "saudável"],
+    "price_level": "$$",
+    "accepts_voucher": null,
+    "diet_options": ["vegetarian", "vegan"],
+    "accessibility": null,
+    "highlights": [
+      "Pokes variados como atum apimentado, salmão trufado e camarada",
+      "Opção de personalização com bases (arroz, quinoa, mix de folhas), proteínas, toppings e molhos",
+      "Bentôs como barriga de porco, salmão grelhado ou shimeji"
+    ],
+    "description": "O Hi Pokee é especializado em pokes e bentôs. O menu oferece entradas como guioza de porco, karaage de frango, shimeji preto e yaki oniguiri, além de bowls prontos como poke de atum apimentado (R$ 69), poke primeiro (salmão com molho cítrico), camarada (R$ 55), salmão spicy (R$ 69) e salmão trufado (R$ 69). Os clientes podem montar seu próprio poke escolhendo base, proteína e toppings. Há ainda bentôs de barriga de porco, salmão grelhado e shimeji preto【605812676356421†L27-L96】.",
+    "hours": "Seg‑Sex 11:00‑17:00 & 18:30‑22:30; Sáb 11:30‑17:00 & 18:30‑22:30; Dom 11:30‑17:00 & 18:30‑22:00【857947529784132†L134-L145】"
+  }
+]
