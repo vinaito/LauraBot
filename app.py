@@ -150,10 +150,12 @@ def main() -> None:
     # Caminho para a base e imagens
     base_path = os.path.dirname(__file__)
     data_path = os.path.join(base_path, "pinheiros_restaurants.json")
+
+    # CARREGUE A BASE AQUI
+    data = load_data(data_path)
+
+    # Diretório das imagens
     image_dir = base_path
-    # Mapeamento de imagens (nome -> arquivo PNG)
-    image_dir = base_path  # imagens estão na pasta /home/oai/share
-    images = {
         "Gael Cozinha Mestiça": "e7618e6d-1c71-4d26-ae8b-b98d58904dc7.png",
         "Otoshi Izakaya": "a4c1545e-5b25-4d35-aeb1-b26ff005b1e1.png",
         "Jojo Ramen (Pinheiros)": "6ce64bee-567c-4fc6-b659-ec32bd181acd.png",
@@ -206,6 +208,7 @@ def main() -> None:
         if not results:
             st.write("Nenhum restaurante corresponde aos critérios selecionados.")
         else:
+            st.write(f"Encontrei {len(results[:5])} opções para você:")
             for idx, item in enumerate(results[:5]):
                 name = item["name"]
                 img_file = images.get(name)
