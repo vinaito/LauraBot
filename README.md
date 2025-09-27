@@ -59,7 +59,12 @@ Principais características:
    **Exemplo de parágrafo:**
 
    ```
-   Arlete Bar e Mercearia: Bar descolado com drinques autorais e petiscos variados. Fica na Rua Vupabussu, 101, Pinheiros. Horário de funcionamento: ter 17h30–00h, qua–sex 17h30–1h, sáb 13h–1h, dom 13h–20h. Aceita vale‑refeição. Possui área aberta, DJ e música ao vivo. Oferece opções vegetarianas.
+   Na barra lateral há uma seção **“Atualizar base de restaurantes”**. Para adicionar ou atualizar restaurantes:
+   - Crie um arquivo `.txt` conforme as instruções detalhadas em [`instrucoes_txt_atualizacao.md`](instrucoes_txt_atualizacao.md), incluindo um parágrafo por restaurante com as principais informações (nome, endereço, tipo de cozinha, horários, se aceita vale-refeição, etc.).
+   - Faça upload do arquivo na barra lateral e clique em **“Processar descrições e atualizar base”**.
+   - O aplicativo enviará essas descrições ao modelo da OpenAI, que irá extrair as informações e mesclá-las ao `pinheiros_restaurants.json`.
+
+   Consulte o arquivo [`instrucoes_txt_atualizacao.md`](instrucoes_txt_atualizacao.md) para exemplos, dados obrigatórios e dicas de formatação.
    ```
 
 6. **Personalize o prompt**
