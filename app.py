@@ -1,9 +1,12 @@
 import json
 from pathlib import Path
+import time
+import sys
 import streamlit as st
 
 # -------------------- Config --------------------
 st.set_page_config(page_title="LauraBot · Guia Pinheiros", page_icon="🍽️", layout="centered")
+_BOOT_T0 = time.perf_counter()
 
 # Guardas contra loops de rerun/redirect
 if "_init_done" not in st.session_state:
@@ -29,7 +32,7 @@ DB = load_db()
 def get_openai_client():
     from openai import OpenAI
     # Usa OPENAI_API_KEY a partir de st.secrets, se existir
-    api_key = st.secrets.get("OPENAI_API_KEY", None)
+    api_key = st.secrets["OPENAI_API_KEY"] if "OPENAI_API_KEY" in st.secrets else None
     if not api_key:
         return None, "Defina OPENAI_API_KEY em Secrets (Streamlit Cloud > App > Settings > Secrets)."
     try:
@@ -93,12 +96,10 @@ def ask_openai(user_msg: str, context_snips: list, stream: bool = True):
         {"role": "user", "content": f"Pergunta: {user_msg}\n\nBase local (use com prioridade):\n{context_text}"}
     ]
 
-    # Modelo: escolha um estável/custo-eficiente para produção
-    model_name = "gpt-5-mini"  # rápido/barato p/ Q&A estruturado
-    # Alternativas: "gpt-5" (qualidade maior) — ajuste conforme orçamento/latência.  [oai_citation:1‡OpenAI plataforma](https://platform.openai.com/docs/models?utm_source=chatgpt.com)
+    model_name = "gpt-5-mini"  # rápido/barato para Q&A estruturado
 
     if stream:
-        # Streaming incremental
+        # Streaming incremental (Responses API)
         stream_resp = client.responses.create(
             model=model_name,
             messages=messages,
@@ -113,10 +114,7 @@ def ask_openai(user_msg: str, context_snips: list, stream: bool = True):
             temperature=0.2,
         )
         # Extrai texto completo
-        full = ""
-        for item in resp.output_text.splitlines():
-            full += item + "\n"
-        return full
+        return resp.output_text
 
 # -------------------- UI --------------------
 st.title("LauraBot · Guia de Restaurantes em Pinheiros")
@@ -141,43 +139,40 @@ if user_prompt:
     st.session_state.chat.append(("user", user_prompt))
     snips = build_context_snippets(user_prompt)
 
-    # UI: imprime contexto local como "debug leve" (colapse)
+    # UI: contexto local (colapse)
     with st.expander("Ver itens da base local usados no contexto", expanded=False):
         st.markdown(format_snippets(snips))
 
     if client:
         if use_stream:
-            # Streaming para a UI
             with st.chat_message("assistant"):
                 placeholder = st.empty()
                 acc = ""
                 try:
                     stream = ask_openai(user_prompt, snips, stream=True)
                     for event in stream:
-                        # `.output_text_delta` nos eventos de streaming da Responses API
+                        # Eventos de streaming da Responses API trazem deltas de texto
                         delta = getattr(event, "output_text_delta", None)
                         if delta:
                             acc += delta
                             placeholder.markdown(acc)
-                    # Garante conteúdo final
                     final_text = acc.strip() or "Sem resposta."
                 except Exception as e:
                     final_text = f"Erro na chamada OpenAI: {e}"
                 st.session_state.chat.append(("assistant", final_text))
         else:
-            # Chamada não-streaming
             try:
                 full = ask_openai(user_prompt, snips, stream=False)
             except Exception as e:
                 full = f"Erro na chamada OpenAI: {e}"
             st.session_state.chat.append(("assistant", full))
     else:
-        # Fallback local (sem OpenAI)
         st.session_state.chat.append(("assistant", format_snippets(snips)))
 
-# Replay do histórico (idempotente; sem mexer em URL/params)
+# Replay do histórico (idempotente)
 for role, content in st.session_state.chat:
     with st.chat_message(role):
         st.markdown(content)
 
 st.divider()
+st.caption(f"⏱️ Boot: {time.perf_counter() - _BOOT_T0:.2f}s • Py {sys.version.split()[0]}")
