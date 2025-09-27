@@ -1,8 +1,13 @@
-"""Aplicação Streamlit para sugerir restaurantes em Pinheiros.
+"""Guia gastronômico de Pinheiros com chat.
 
-Esta aplicação lê um arquivo JSON contendo dados de restaurantes do bairro
-de Pinheiros (São Paulo) e permite ao usuário filtrar por culinária,
-faixa de preço, vale-refeição, restrições alimentares e acessibilidade.
+Este app em Streamlit lê uma base JSON de restaurantes em Pinheiros (São Paulo)
+e permite conversar em linguagem natural: o usuário faz perguntas sobre onde
+comer, culinárias, horários, etc., e o modelo do OpenAI responde com base
+nesses dados. Se a resposta não estiver na base, ele avisa.
+
+Para usar:
+- Coloque 'pinheiros_restaurants.json' no mesmo diretório deste arquivo.
+- Defina sua chave da OpenAI em secrets (Streamlit Cloud) como OPENAI_API_KEY.
 """
 
 import json
@@ -11,94 +16,29 @@ from typing import List, Dict, Any
 
 import streamlit as st
 from PIL import Image
+import openai
 
 
 def load_data(path: str) -> List[Dict[str, Any]]:
-    """Carrega a base de restaurantes a partir de um arquivo JSON."""
+    """Carrega o JSON da base de restaurantes."""
     with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return data
-
-
-def get_unique_values(data: List[Dict[str, Any]], key: str) -> List[str]:
-    """Extrai valores únicos de um campo (lista ou string) da base."""
-    values = []
-    for item in data:
-        val = item.get(key)
-        if isinstance(val, list):
-            values.extend(val)
-        elif val is not None:
-            values.append(val)
-    return sorted({v for v in values if v})
-
-
-def filter_restaurants(
-    data: List[Dict[str, Any]],
-    cuisines: List[str],
-    price: str,
-    voucher: str,
-    diets: List[str],
-    accessibility: str,
-) -> List[Dict[str, Any]]:
-    """Filtra restaurantes de acordo com os critérios selecionados."""
-    results = []
-    for item in data:
-        score = 0
-        # Culinária
-        if cuisines and not any(c.lower() in [c.lower() for c in item.get("cuisine", [])] for c in cuisines):
-            continue
-        if cuisines:
-            score += 1
-        # Preço
-        if price != "Todos" and item.get("price_level") != price:
-            continue
-        if price != "Todos":
-            score += 1
-        # Vale refeição
-        acc_vale = item.get("accepts_voucher")
-        if voucher == "Sim" and acc_vale is not True:
-            continue
-        if voucher == "Não" and acc_vale is True:
-            continue
-        if voucher != "Indiferente":
-            score += 1
-        # Restrições
-        if diets and not all(d.lower() in [d.lower() for d in (item.get("diet_options") or [])] for d in diets):
-            continue
-        if diets:
-            score += 1
-        # Acessibilidade
-        acc = item.get("accessibility")
-        if accessibility == "Sim" and acc is not True:
-            continue
-        if accessibility == "Não" and acc is True:
-            continue
-        if accessibility != "Indiferente":
-            score += 1
-
-        item_copy = dict(item)
-        item_copy["score"] = score
-        results.append(item_copy)
-
-    return sorted(results, key=lambda x: x["score"], reverse=True)
+        return json.load(f)
 
 
 def main() -> None:
     st.set_page_config(page_title="Guia Gastronômico de Pinheiros", page_icon="🍽️")
     st.title("🍽️ Guia Gastronômico de Pinheiros")
-    st.markdown(
-        "Descubra restaurantes em Pinheiros de acordo com suas preferências. "
-        "Selecione o tipo de culinária, a faixa de preço, se precisa de vale refeição, "
-        "restrições alimentares e acessibilidade. O aplicativo retornará até cinco opções adequadas."
-    )
 
-    # Caminhos
+    # Carrega a base
     base_path = os.path.dirname(__file__)
     data_path = os.path.join(base_path, "pinheiros_restaurants.json")
-    data = load_data(data_path)  # ← ESSA LINHA CARREGA O JSON
-    image_dir = base_path
+    try:
+        data = load_data(data_path)
+    except FileNotFoundError:
+        st.error("Arquivo pinheiros_restaurants.json não encontrado.")
+        return
 
-    # Mapeamento de imagens
+    # Mapeia imagens para cada restaurante
     images = {
         "Gael Cozinha Mestiça": "e7618e6d-1c71-4d26-ae8b-b98d58904dc7.png",
         "Otoshi Izakaya": "a4c1545e-5b25-4d35-aeb1-b26ff005b1e1.png",
@@ -111,60 +51,73 @@ def main() -> None:
         "Notorious Fish": "placeholder_light_gray_block.png",
         "Hi Pokee – Pinheiros": "placeholder_light_gray_block.png",
     }
+    image_dir = base_path
 
-    # Gera listas de opções para os widgets
-    available_cuisines = get_unique_values(data, "cuisine")
-    available_diets = get_unique_values(data, "diet_options")
-    price_options = ["Todos", "$", "$$", "$$$"]
-    voucher_options = ["Indiferente", "Sim", "Não"]
-    accessibility_options = ["Indiferente", "Sim", "Não"]
+    # Campo de chat
+    question = st.chat_input("Pergunte algo sobre restaurantes em Pinheiros…")
 
-    # Controles na barra lateral
-    st.sidebar.header("Preferências de busca")
-    selected_cuisines = st.sidebar.multiselect("Tipo de culinária", options=available_cuisines)
-    selected_price = st.sidebar.selectbox("Faixa de preço", options=price_options, index=0)
-    selected_voucher = st.sidebar.selectbox("Aceita vale refeição?", options=voucher_options, index=0)
-    selected_diets = st.sidebar.multiselect("Restrições alimentares", options=available_diets)
-    selected_access = st.sidebar.selectbox("Necessita de acessibilidade?", options=accessibility_options, index=0)
-
-    st.sidebar.markdown("\nClique em **Buscar** para ver as recomendações.")
-    if st.sidebar.button("Buscar"):
-        results = filter_restaurants(
-            data,
-            cuisines=selected_cuisines,
-            price=selected_price,
-            voucher=selected_voucher,
-            diets=selected_diets,
-            accessibility=selected_access,
-        )
-        st.subheader("Resultados")
-        if not results:
-            st.write("Nenhum restaurante corresponde aos critérios selecionados.")
+    if question:
+        # Obtém a chave da API a partir dos segredos
+        api_key = st.secrets.get("OPENAI_API_KEY")
+        if not api_key:
+            st.error("OPENAI_API_KEY não configurado nos segredos da sua aplicação.")
         else:
-            st.success(f"Encontrei {len(results[:5])} opção(ões) para você!")
-            for idx, item in enumerate(results[:5]):
-                name = item["name"]
-                # Criar um resumo em linguagem natural
-                resumo = (
-                    f"{idx + 1}. {name}: culinária {', '.join(item.get('cuisine', []))}, "
-                    f"preço {item.get('price_level', '–')}. "
-                    f"Destaques: {', '.join(item.get('highlights', [])[:2])}."
+            openai.api_key = api_key
+            # Prepara contexto: converte a base em texto para o modelo
+            context = json.dumps(data, ensure_ascii=False)
+            prompt = (
+                "Você é um guia gastronômico especializado em restaurantes em Pinheiros, São Paulo. "
+                "Use **apenas** as informações da base de dados a seguir para responder de forma educada "
+                "à pergunta do usuário. Se a resposta não estiver na base, diga que não possui essa informação.\n\n"
+                f"Base de dados:\n{context}\n\n"
+                f"Pergunta: {question}\n\n"
+                "Resposta:"
+            )
+            try:
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.2,
+                    max_tokens=500,
                 )
-                st.markdown(resumo)
+                answer = response["choices"][0]["message"]["content"].strip()
+                st.markdown(answer)
+            except Exception as e:
+                st.error(f"Erro ao consultar a API da OpenAI: {e}")
+
+    # Exibe todos os restaurantes abaixo do chat como referência
+    with st.expander("Ver lista completa de restaurantes"):
+        for item in data:
+            name = item["name"]
+            st.markdown(f"### {name}")
+            col1, col2 = st.columns([1, 3])
+            with col1:
                 img_file = images.get(name)
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    path_img = os.path.join(image_dir, img_file) if img_file else None
-                    if path_img and os.path.exists(path_img):
-                        st.image(Image.open(path_img), use_column_width=True)
-                with col2:
-                    st.markdown(f"**Endereço:** {item['address']}")
-                    st.markdown(f"**Vale refeição:** {'Aceita' if item.get('accepts_voucher') else 'Não aceita' if item.get('accepts_voucher') is False else 'Não informado'}")
-                    if item.get('diet_options'):
-                        st.markdown(f"**Opções para restrições:** {', '.join(item['diet_options'])}")
-                    st.markdown(f"**Acessibilidade:** {'Possui' if item.get('accessibility') else 'Não possui' if item.get('accessibility') is False else 'Não informado'}")
-                    st.markdown(f"**Horário:** {item.get('hours') or 'Não informado'}")
-                    st.markdown(f"**Descrição:** {item.get('description')}")
+                path_img = os.path.join(image_dir, img_file) if img_file else None
+                if path_img and os.path.exists(path_img):
+                    st.image(Image.open(path_img), use_column_width=True)
+            with col2:
+                st.markdown(f"- **Culinária:** {', '.join(item.get('cuisine', []))}")
+                st.markdown(f"- **Preço:** {item.get('price_level', '–')}")
+                acc_vale = item.get("accepts_voucher")
+                if acc_vale is True:
+                    st.markdown(f"- **Vale-refeição:** aceita")
+                elif acc_vale is False:
+                    st.markdown(f"- **Vale-refeição:** não aceita")
+                else:
+                    st.markdown(f"- **Vale-refeição:** não informado")
+                if item.get("diet_options"):
+                    st.markdown(f"- **Opções de dieta:** {', '.join(item['diet_options'])}")
+                acc = item.get("accessibility")
+                if acc is True:
+                    st.markdown(f"- **Acessibilidade:** possui")
+                elif acc is False:
+                    st.markdown(f"- **Acessibilidade:** não possui")
+                else:
+                    st.markdown(f"- **Acessibilidade:** não informado")
+                st.markdown(f"- **Horário:** {item.get('hours', 'não informado')}")
+                st.markdown(f"- **Endereço:** {item['address']}")
+                st.markdown(f"- **Descrição:** {item['description']}")
 
 if __name__ == "__main__":
     main()
