@@ -148,10 +148,9 @@ def main() -> None:
     )
 
     # Caminho para a base e imagens
-    base_path = os.path.join(os.path.dirname(__file__), "..")
+    base_path = os.path.dirname(__file__)
     data_path = os.path.join(base_path, "pinheiros_restaurants.json")
-    data = load_data(data_path)
-
+    image_dir = base_path
     # Mapeamento de imagens (nome -> arquivo PNG)
     image_dir = base_path  # imagens estão na pasta /home/oai/share
     images = {
