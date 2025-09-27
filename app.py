@@ -1,129 +1,207 @@
-"""Guia gastronômico de Pinheiros com chat conversacional.
+"""Guia gastronômico de Pinheiros com interface de chat e fonte de dados textual.
 
-Este aplicativo Streamlit lê uma base JSON contendo informações de
-restaurantes no bairro de Pinheiros, em São Paulo, e disponibiliza
-uma interface de chat para que o usuário converse em linguagem
-natural. O modelo da OpenAI responde às perguntas baseando‑se nos
-dados carregados. Se a resposta não estiver na base, o bot avisará
-que não tem a informação.
+Este aplicativo em Streamlit permite que a jornalista Laura mantenha seu
+conteúdo sobre restaurantes de Pinheiros de forma simples, sem lidar
+com JSON. A base de dados é lida de um arquivo de texto (`*.txt`),
+em que cada linha representa um restaurante e os campos são
+separados pelo caractere pipe (``|``). Um arquivo de prompt separado
+(`prompt.txt`) contém as instruções para o modelo de linguagem.
 
-Para que o chat funcione, é necessário definir a variável secreta
-`OPENAI_API_KEY` nas configurações da aplicação do Streamlit
-Community Cloud. O valor **não** deve ser armazenado neste
-arquivo de código. Localmente, você pode criar um arquivo
-`.streamlit/secrets.toml` com a chave.
+Estrutura sugerida para cada linha da base de dados (separada por
+``|``):
 
-O app também mostra uma lista completa de restaurantes em um
-expansor para referência.
+    nome | culinarias separadas por ; | faixa de preço | aceita VR?
+    | restrições separadas por ; | acessibilidade | horário |
+    endereço | descrição
+
+Campos opcionais podem ser deixados em branco. Por exemplo,
+``None`` ou uma string vazia serão interpretados como ausência de
+informação. A jornalista pode editar o arquivo com qualquer editor
+de texto simples, sem precisar de formatação JSON.
+
+Para usar a API da OpenAI, inclua a biblioteca ``openai`` nas
+dependências (`requirements.txt`) e configure a sua chave secreta
+``OPENAI_API_KEY`` no painel de segredos do Streamlit Cloud. O
+aplicativo utiliza o cliente da biblioteca `openai` versão 1.x,
+conforme indicado na documentação oficial【752441592351756†L60-L77】.
+
+Nota: Este aplicativo não realiza buscas externas em tempo real
+(internet), pois o ambiente de execução não disponibiliza APIs de
+pesquisa externas. O modelo de linguagem usa apenas as informações
+da base de dados e seu conhecimento interno. Para informações
+atualizadas, a jornalista deve revisar periodicamente o arquivo
+``*.txt``.
 """
 
 import json
 import os
-from typing import Dict, Any, List
+from typing import Dict, List, Any, Tuple
 
 import streamlit as st
 from PIL import Image
 
-# Importa o cliente OpenAI a partir do SDK 1.x. Para versões
-# anteriores (<=0.28), este import não existe e será necessário
-# piná‑lo ou atualizar seu código.
+# Tenta importar o cliente da versão 1.x da biblioteca openai. Caso a
+# biblioteca não esteja instalada, o app irá alertar o usuário em
+# tempo de execução.
 try:
     from openai import OpenAI  # type: ignore
 except ImportError:
-    # Mensagem amigável caso o módulo openai não esteja instalado.
     OpenAI = None  # type: ignore
 
 
-def load_data(path: str) -> List[Dict[str, Any]]:
-    """Lê e retorna a base de restaurantes a partir de um arquivo JSON.
+def parse_restaurant_line(line: str) -> Dict[str, Any]:
+    """Converte uma linha do arquivo de restaurantes em um dicionário.
 
-    O arquivo deve estar codificado em UTF‑8. Em caso de erro de
-    abertura ou decodificação, será lançada a exceção correspondente.
+    Cada campo deve ser separado por ``|`` conforme a especificação. Se
+    alguns campos estiverem em branco, eles serão convertidos para
+    ``None`` ou listas vazias conforme apropriado. Esta função é
+    tolerante com espaçamentos extras ao redor dos campos.
+
+    Retorna um dicionário com as chaves:
+    ``name``, ``cuisine`` (lista), ``price_level``, ``accepts_voucher``
+    (bool ou None), ``diet_options`` (lista), ``accessibility``
+    (bool ou None), ``hours``, ``address`` e ``description``.
     """
+    parts = [p.strip() for p in line.split("|")]
+    # Garante no mínimo 9 campos
+    while len(parts) < 9:
+        parts.append("")
+
+    name = parts[0]
+    cuisine = [c.strip() for c in parts[1].split(";") if c.strip()] if parts[1] else []
+    price = parts[2] if parts[2] else None
+    voucher_field = parts[3].lower() if parts[3] else ""
+    if voucher_field in {"sim", "yes", "true"}:
+        accepts_voucher = True
+    elif voucher_field in {"não", "nao", "no", "false"}:
+        accepts_voucher = False
+    else:
+        accepts_voucher = None
+    diet_options = [d.strip() for d in parts[4].split(";") if d.strip()] if parts[4] else []
+    accessibility_field = parts[5].lower() if parts[5] else ""
+    if accessibility_field in {"sim", "yes", "true"}:
+        accessibility = True
+    elif accessibility_field in {"não", "nao", "no", "false"}:
+        accessibility = False
+    else:
+        accessibility = None
+    hours = parts[6] if parts[6] else None
+    address = parts[7] if parts[7] else None
+    description = parts[8] if parts[8] else None
+    return {
+        "name": name,
+        "cuisine": cuisine,
+        "price_level": price,
+        "accepts_voucher": accepts_voucher,
+        "diet_options": diet_options,
+        "accessibility": accessibility,
+        "hours": hours,
+        "address": address,
+        "description": description,
+    }
+
+
+def load_data_from_txt(path: str) -> List[Dict[str, Any]]:
+    """Lê o arquivo de base textual e converte cada linha em um dicionário.
+
+    Se o arquivo não existir ou estiver vazio, retorna uma lista vazia.
+    """
+    if not os.path.exists(path):
+        return []
+    data: List[Dict[str, Any]] = []
     with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        for line in f:
+            if not line.strip():
+                continue
+            data.append(parse_restaurant_line(line))
+    return data
+
+
+def load_prompt(path: str) -> str:
+    """Carrega o prompt de instrução para o modelo a partir de um arquivo.
+
+    Se o arquivo não existir, retorna um prompt padrão. A jornalista pode
+    atualizar esse arquivo manualmente para alterar o comportamento do
+    chatbot sem mexer no código.
+    """
+    default_prompt = (
+        "Você é um guia gastronômico especializado em restaurantes em "
+        "Pinheiros, São Paulo. Use as informações fornecidas na base de "
+        "dados para responder às perguntas do usuário. Se a resposta não "
+        "estiver na base ou você não souber, diga que não possui essa "
+        "informação. Seja educado e objetivo nas respostas."
+    )
+    if not os.path.exists(path):
+        return default_prompt
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            return content or default_prompt
+    except Exception:
+        return default_prompt
+
+
+def build_context(data: List[Dict[str, Any]]) -> str:
+    """Converte a lista de restaurantes em uma string JSON para o modelo."""
+    try:
+        return json.dumps(data, ensure_ascii=False)
+    except Exception:
+        return "[]"
 
 
 def main() -> None:
-    """Função principal que monta a interface e executa o chat."""
+    """Função principal que constrói a interface Streamlit."""
     st.set_page_config(page_title="Guia Gastronômico de Pinheiros", page_icon="🍽️")
     st.title("🍽️ Guia Gastronômico de Pinheiros")
     st.markdown(
-        "Converse sobre restaurantes em Pinheiros! Faça perguntas em "
-        "linguagem natural e receba respostas baseadas em nossa base de "
-        "dados. Se não soubermos a resposta, avisaremos."
+        "Este chatbot ajuda a encontrar restaurantes no bairro de Pinheiros "
+        "conforme sua preferência. O conhecimento é carregado de um arquivo "
+        "de texto que a jornalista pode editar facilmente."\
     )
 
-    # Caminhos para a base e as imagens
     base_path = os.path.dirname(__file__)
-    data_path = os.path.join(base_path, "pinheiros_restaurants.json")
+    data_txt_path = os.path.join(base_path, "pinheiros_restaurants.txt")
+    prompt_path = os.path.join(base_path, "prompt.txt")
 
-    # Carrega os dados e exibe um erro amigável se o arquivo não existir.
-    try:
-        data = load_data(data_path)
-    except FileNotFoundError:
-        st.error(
-            "Arquivo 'pinheiros_restaurants.json' não encontrado. "
-            "Certifique‑se de que o arquivo está na mesma pasta que o app."
+    data = load_data_from_txt(data_txt_path)
+    if not data:
+        st.warning(
+            "Não foi possível carregar a base de dados de restaurantes. "
+            "Verifique se o arquivo 'pinheiros_restaurants.txt' existe e "
+            "contém dados."
         )
-        return
 
-    # Mapeia nome do restaurante para o arquivo de imagem. Use
-    # 'placeholder_light_gray_block.png' para imagens ausentes.
-    images: Dict[str, str] = {
-        "Gael Cozinha Mestiça": "e7618e6d-1c71-4d26-ae8b-b98d58904dc7.png",
-        "Otoshi Izakaya": "a4c1545e-5b25-4d35-aeb1-b26ff005b1e1.png",
-        "Jojo Ramen (Pinheiros)": "6ce64bee-567c-4fc6-b659-ec32bd181acd.png",
-        "Modern Mamma Osteria (Moma) – Pinheiros": "a23da210-f677-45d8-831f-36e6826555ee.png",
-        "Momokuri": "0b8093ff-c821-4186-ab5e-59392575d051.png",
-        "Arlete Bar e Mercearia": "ef1b98a1-9fa7-442b-9969-2c51b25bc897.png",
-        "Pirajá (Faria Lima)": "cfbdc833-d2bc-4c9e-bac2-e582a5a6a71e.png",
-        "Buzina Burgers (Baixo Pinheiros)": "78cf8129-c001-4bdf-8daf-9644137aeaf3.png",
-        "Notorious Fish": "placeholder_light_gray_block.png",
-        "Hi Pokee – Pinheiros": "placeholder_light_gray_block.png",
-    }
+    prompt = load_prompt(prompt_path)
 
-    # Lê a pergunta do usuário via chat_input. Este campo aparece na
-    # parte inferior da página.
+    # Campo de chat
     question = st.chat_input("Pergunte algo sobre restaurantes em Pinheiros…")
 
     if question:
-        # Verifica se a biblioteca openai está disponível
         if OpenAI is None:
             st.error(
-                "A biblioteca 'openai' não está instalada. Inclua 'openai' no "
-                "arquivo requirements.txt e faça o deploy novamente."
+                "A biblioteca 'openai' não está instalada. Adicione 'openai' ao "
+                "seu requirements.txt e redeploy a aplicação."
             )
         else:
-            # Tenta obter a chave da OpenAI a partir dos segredos configurados
             api_key = st.secrets.get("OPENAI_API_KEY")
             if not api_key:
                 st.error(
                     "Chave OPENAI_API_KEY não encontrada nos segredos. "
-                    "Adicione sua chave no painel de Secrets da aplicação no "
-                    "Streamlit Cloud."
+                    "Adicione sua chave no painel de Secrets do Streamlit Cloud."
                 )
             else:
-                # Cria o cliente OpenAI com a chave fornecida
                 client = OpenAI(api_key=api_key)
-                # Constrói o contexto com os dados convertidos para JSON
-                context = json.dumps(data, ensure_ascii=False)
-                # Monta o prompt com instruções e a pergunta
-                prompt = (
-                    "Você é um guia gastronômico especializado em restaurantes "
-                    "em Pinheiros, São Paulo. Use **apenas** as informações "
-                    "abaixo (fornecidas em formato JSON) para responder à "
-                    "pergunta do usuário. Se a resposta não estiver na base, "
-                    "diga que não possui essa informação.\n\n"
-                    f"Base de dados:\n{context}\n\n"
-                    f"Pergunta: {question}\n\n"
+                context = build_context(data)
+                full_prompt = (
+                    f"{prompt}\n\n"
+                    f"Base de dados (JSON):\n{context}\n\n"
+                    f"Pergunta do usuário: {question}\n\n"
                     "Resposta:"
                 )
                 try:
-                    # Chama o modelo chat para gerar a resposta
                     completion = client.chat.completions.create(
-                        model="gpt-3.5-turbo",  # ou outro modelo autorizado
-                        messages=[{"role": "user", "content": prompt}],
+                        model="gpt-3.5-turbo",
+                        messages=[{"role": "user", "content": full_prompt}],
                         temperature=0.3,
                         max_tokens=600,
                     )
@@ -132,48 +210,45 @@ def main() -> None:
                 except Exception as exc:
                     st.error(f"Erro ao consultar a API da OpenAI: {exc}")
 
-    # Expansor com a lista completa de restaurantes para referência
+    # Expansor com a lista de restaurantes
     with st.expander("Ver lista completa de restaurantes"):
         for item in data:
-            name = item["name"]
+            name = item.get("name")
+            if not name:
+                continue
             st.markdown(f"### {name}")
-            col1, col2 = st.columns([1, 3])
-            with col1:
-                img_file = images.get(name, "placeholder_light_gray_block.png")
-                img_path = os.path.join(base_path, img_file)
-                if os.path.exists(img_path):
-                    st.image(Image.open(img_path), use_column_width=True)
-            with col2:
-                cuisines = ", ".join(item.get("cuisine", [])) or "–"
-                price = item.get("price_level", "–")
-                voucher = item.get("accepts_voucher")
-                if voucher is True:
-                    voucher_str = "Aceita"
-                elif voucher is False:
-                    voucher_str = "Não aceita"
-                else:
-                    voucher_str = "Não informado"
-                # Garante que diet_options é iterável; converte None para lista vazia
-                diets_list = item.get("diet_options") or []
-                if not isinstance(diets_list, (list, tuple)):
-                    diets_list = []
-                diets = ", ".join(diets_list) if diets_list else "–"
-                accessibility = item.get("accessibility")
-                if accessibility is True:
-                    access_str = "Possui"
-                elif accessibility is False:
-                    access_str = "Não possui"
-                else:
-                    access_str = "Não informado"
-                hours = item.get("hours", "Não informado")
-                st.markdown(f"- **Culinária:** {cuisines}")
-                st.markdown(f"- **Preço:** {price}")
-                st.markdown(f"- **Vale-refeição:** {voucher_str}")
-                st.markdown(f"- **Opções de dieta:** {diets}")
-                st.markdown(f"- **Acessibilidade:** {access_str}")
-                st.markdown(f"- **Horário:** {hours}")
-                st.markdown(f"- **Endereço:** {item['address']}")
-                st.markdown(f"- **Descrição:** {item['description']}")
+            # Em uma versão mais avançada, este bloco pode mostrar imagens se
+            # existirem imagens associadas ao restaurante.
+            cuisines = ", ".join(item.get("cuisine", [])) or "–"
+            price = item.get("price_level", "–") or "–"
+            voucher = item.get("accepts_voucher")
+            if voucher is True:
+                voucher_str = "Aceita"
+            elif voucher is False:
+                voucher_str = "Não aceita"
+            else:
+                voucher_str = "Não informado"
+            diets = ", ".join(item.get("diet_options", [])) or "–"
+            accessibility = item.get("accessibility")
+            if accessibility is True:
+                accessibility_str = "Possui"
+            elif accessibility is False:
+                accessibility_str = "Não possui"
+            else:
+                accessibility_str = "Não informado"
+            hours = item.get("hours", "Não informado") or "Não informado"
+            address = item.get("address", "Não informado") or "Não informado"
+            description = item.get("description", "")
+            st.markdown(f"- **Culinária:** {cuisines}")
+            st.markdown(f"- **Preço:** {price}")
+            st.markdown(f"- **Vale-refeição:** {voucher_str}")
+            st.markdown(f"- **Opções de dieta:** {diets}")
+            st.markdown(f"- **Acessibilidade:** {accessibility_str}")
+            st.markdown(f"- **Horário:** {hours}")
+            st.markdown(f"- **Endereço:** {address}")
+            if description:
+                st.markdown(f"- **Descrição:** {description}")
+
 
 if __name__ == "__main__":
     main()
