@@ -181,4 +181,3 @@ for role, content in st.session_state.chat:
         st.markdown(content)
 
 st.divider()
-st.caption("Dica: evite alterar URL/`query_params` no código para não causar loops. Streaming e uso do client seguem a API oficial da OpenAI.")
