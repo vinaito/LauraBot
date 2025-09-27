@@ -153,7 +153,11 @@ def main() -> None:
                     voucher_str = "Não aceita"
                 else:
                     voucher_str = "Não informado"
-                diets = ", ".join(item.get("diet_options", [])) or "–"
+                # Garante que diet_options é iterável; converte None para lista vazia
+                diets_list = item.get("diet_options") or []
+                if not isinstance(diets_list, (list, tuple)):
+                    diets_list = []
+                diets = ", ".join(diets_list) if diets_list else "–"
                 accessibility = item.get("accessibility")
                 if accessibility is True:
                     access_str = "Possui"
