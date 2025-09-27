@@ -109,12 +109,19 @@ def format_snippets(snips):
     return "\n\n".join(out)
 
 def ask_openai(user_msg: str, context_snips: list, stream: bool = True):
-    """Chama OpenAI Responses API com contexto da base local."""
+    """Chama OpenAI via Chat Completions (aceita 'messages')."""
     if client is None:
         raise RuntimeError(client_err or "OpenAI client não inicializado")
 
+    def cuisine_to_str(v):
+        if v is None:
+            return ""
+        if isinstance(v, (list, tuple, set)):
+            return ", ".join(str(x) for x in v if str(x))
+        return str(v)
+
     context_text = "\n\n".join(
-        [f"- {r.get('name','')} | {', '.join(r.get('cuisine', [])) if isinstance(r.get('cuisine'), list) else str(r.get('cuisine') or '')} | "
+        [f"- {r.get('name','')} | {cuisine_to_str(r.get('cuisine'))} | "
          f"{r.get('address','')} | {r.get('hours','')} | {r.get('price_level','')} | {r.get('description','')}"
          for r in context_snips]
     ) or "(sem correspondências locais)"
@@ -124,22 +131,22 @@ def ask_openai(user_msg: str, context_snips: list, stream: bool = True):
         {"role": "user", "content": f"Pergunta: {user_msg}\n\nBase local (use com prioridade):\n{context_text}"},
     ]
 
-    model_name = "gpt-5-mini"  # ajuste se quiser mais qualidade: "gpt-5"
+    model_name = "gpt-4o-mini"  # ajuste conforme sua conta: "gpt-4o", "gpt-5", etc.
 
     if stream:
-        return client.responses.create(
+        return client.chat.completions.create(
             model=model_name,
             messages=messages,
             temperature=0.2,
             stream=True,
         )
     else:
-        resp = client.responses.create(
+        resp = client.chat.completions.create(
             model=model_name,
             messages=messages,
             temperature=0.2,
         )
-        return resp.output_text
+        return resp.choices[0].message.content or ""
 
 # -------------------- UI --------------------
 st.title("LauraBot · Guia de Restaurantes em Pinheiros")
@@ -178,8 +185,12 @@ if user_prompt:
                 paint_every = 120  # atualiza DOM a cada ~120 chars
                 try:
                     stream = ask_openai(user_prompt, snips, stream=True)
-                    for event in stream:
-                        delta = getattr(event, "output_text_delta", None)
+                    for chunk in stream:
+                        # chat.completions streaming: delta em choices[0].delta.content
+                        if not getattr(chunk, "choices", None):
+                            continue
+                        delta_obj = chunk.choices[0].delta
+                        delta = getattr(delta_obj, "content", None)
                         if delta:
                             acc += delta
                             if len(acc) - last_paint_len >= paint_every:
