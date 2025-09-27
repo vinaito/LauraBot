@@ -1,4 +1,4 @@
 streamlit>=1.50
 pillow
 numpy
-openai
+openai==0.28.1
