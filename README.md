@@ -4,7 +4,14 @@ Este repositório contém um aplicativo de demonstração em [Streamlit](https:/
 
 ## Visão geral
 
-O chatbot responde a perguntas sobre restaurantes com base em uma **base de dados estruturada** (`pinheiros_restaurants.json`). A aplicação também inclui um módulo opcional de **atualização** que permite adicionar ou atualizar restaurantes a partir de um arquivo de texto em linguagem natural, que é interpretado pela API da OpenAI.
+
+O aplicativo possui quatro abas principais:
+1. **Chatbot**: Converse sobre restaurantes de Pinheiros, com respostas baseadas na base local e, opcionalmente, IA (OpenAI).
+2. **Base**: Visualize, busque e filtre os restaurantes cadastrados.
+3. **Importar .txt**: Adicione ou atualize restaurantes via upload de arquivo `.txt`, processado em modo offline (regex) ou por IA (LLM), conforme configuração.
+4. **Ferramentas**: Baixe o JSON, veja dicas de configuração e instruções para ativar/desativar o modo IA.
+
+O chatbot responde a perguntas sobre restaurantes com base em uma **base de dados estruturada** (`pinheiros_restaurants.json`). A aplicação também inclui um módulo opcional de **atualização** que permite adicionar ou atualizar restaurantes a partir de um arquivo de texto em linguagem natural, que pode ser interpretado por IA (OpenAI) ou por parser offline.
 
 Principais características:
 
@@ -28,13 +35,19 @@ Principais características:
 
 2. **Configure sua chave da OpenAI**
 
+
    Crie um arquivo `.streamlit/secrets.toml` (ou configure via painel do Streamlit Cloud) com o conteúdo:
 
    ```toml
+   USE_LLM_EXTRACTOR = true  # (opcional) ativa importação e chat via IA
    OPENAI_API_KEY = "sk‑...sua chave..."
+   OPENAI_MODEL = "gpt-4o-mini"  # (opcional, pode ajustar)
    ```
 
-   Esta chave é utilizada tanto para o chat quanto para a extração de dados do arquivo de texto. Não inclua a chave diretamente no código fonte.
+   - `USE_LLM_EXTRACTOR`: se `true`, ativa importação e chat via IA (OpenAI). Se ausente ou `false`, o app funciona apenas em modo offline.
+   - `OPENAI_API_KEY`: chave da OpenAI para uso do modo IA.
+   - `OPENAI_MODEL`: modelo OpenAI a ser utilizado (padrão: `gpt-4o-mini`).
+   Não inclua a chave diretamente no código fonte.
 
 3. **Execute a aplicação**
 
@@ -50,15 +63,12 @@ Principais características:
 
 5. **Atualize a base com descrições**
 
-   Na barra lateral há uma seção **“Atualizar base de restaurantes”**. Para adicionar ou atualizar restaurantes:
 
-   - Crie um arquivo `.txt` com um parágrafo por restaurante contendo as principais informações (nome, endereço, tipo de cozinha, horários, se aceita vale‑refeição, etc.).
-   - Faça upload do arquivo na barra lateral e clique em **“Processar descrições e atualizar base”**.
-   - O aplicativo enviará essas descrições ao modelo da OpenAI, que irá extrair as informações e mesclá‑las ao `pinheiros_restaurants.json`.
-
-   **Exemplo de parágrafo:**
-
-   ```
+   Na aba **Importar .txt**, faça upload de um arquivo `.txt` conforme as instruções detalhadas em [`instrucoes_txt_atualizacao.md`](instrucoes_txt_atualizacao.md), incluindo um parágrafo por restaurante com as principais informações (nome, endereço, tipo de cozinha, horários, se aceita vale-refeição, etc.).
+   - O modo **offline** (sem IA) reconhece campos básicos por regex.
+   - O modo **LLM** (IA) extrai campos completos via OpenAI, se ativado.
+   - Após o upload, visualize a pré-análise e clique para importar. O sistema mescla os dados ao `pinheiros_restaurants.json`, adicionando ou atualizando registros.
+   Consulte o arquivo [`instrucoes_txt_atualizacao.md`](instrucoes_txt_atualizacao.md) para exemplos, dados obrigatórios e dicas de formatação.
    Na barra lateral há uma seção **“Atualizar base de restaurantes”**. Para adicionar ou atualizar restaurantes:
    - Crie um arquivo `.txt` conforme as instruções detalhadas em [`instrucoes_txt_atualizacao.md`](instrucoes_txt_atualizacao.md), incluindo um parágrafo por restaurante com as principais informações (nome, endereço, tipo de cozinha, horários, se aceita vale-refeição, etc.).
    - Faça upload do arquivo na barra lateral e clique em **“Processar descrições e atualizar base”**.
@@ -98,6 +108,10 @@ Novos restaurantes extraídos do arquivo de descrições serão convertidos para
 
 ## Limitações
 
+
+- Mudanças no arquivo JSON feitas via Streamlit Cloud podem ser perdidas em rebuilds do app. Para uso em produção, considere armazenamento externo.
+- O modo IA depende da configuração correta das variáveis e da chave da OpenAI.
+- O modo offline pode não extrair todos os campos; quanto mais completo o texto, melhor o resultado.
 - O aplicativo **não executa buscas na internet**; toda a informação vem do arquivo JSON ou das descrições fornecidas. Caso deseje dados mais recentes, edite o arquivo de descrições e atualize a base.
 - A extração automática depende da API da OpenAI. Verifique se sua chave possui crédito suficiente.
 
