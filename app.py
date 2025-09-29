@@ -1,225 +1,406 @@
+# app.py
+# LauraBot - Importador e navegador de restaurantes (Pinheiros)
+# Compatível com base JSON "pinheiros_restaurants.json"
+# - Importação OFFLINE por parser heurístico (regex)
+# - Importação opcional via LLM (OpenAI), ativada por flag USE_LLM_EXTRACTOR
+# - Confirmações claras e contagens de novos/atualizados/ignorados
+
+import os
+import re
 import json
-from pathlib import Path
 import time
-import sys
+from datetime import datetime
+from typing import List, Dict, Tuple, Optional
+
 import streamlit as st
 
-# -------------------- Config --------------------
-st.set_page_config(
-    page_title="LauraBot · Guia Pinheiros",
-    page_icon="🍽️",
-    layout="centered",
-    initial_sidebar_state="collapsed",
-)
-_BOOT_T0 = time.perf_counter()
+# =========================
+# Configurações do projeto
+# =========================
 
-# Guardas contra loops de rerun/redirect
-if "_init_done" not in st.session_state:
-    st.session_state._init_done = True
-    st.session_state.chat = []  # (role, content)
+DATA_FILE = "pinheiros_restaurants.json"
 
-# -------------------- Dados locais --------------------
-@st.cache_data(show_spinner=False)
-def load_db(path: str = "pinheiros_restaurants.json"):
-    """Lê a base JSON e garante estrutura de lista de dicts."""
-    p = Path(path)
-    if not p.exists():
+def _get_flag_use_llm() -> bool:
+    # Flag pode vir de secrets ou env var
+    flag = False
+    try:
+        flag = bool(st.secrets.get("USE_LLM_EXTRACTOR", False))
+    except Exception:
+        pass
+    envv = os.getenv("USE_LLM_EXTRACTOR")
+    if envv is not None:
+        flag = envv == "1" or envv.lower() in ("true", "yes", "on")
+    return flag
+
+USE_LLM = _get_flag_use_llm()
+
+# =============
+# Utilidades DB
+# =============
+
+def load_db() -> List[Dict]:
+    if not os.path.exists(DATA_FILE):
         return []
     try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-        return [d for d in data if isinstance(d, dict)]
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                return data
+            # Caso esteja em outro formato inesperado, normaliza pra lista
+            return list(data)
     except Exception as e:
-        st.warning(f"Falha ao ler JSON: {e}")
+        st.error(f"Falha ao ler {DATA_FILE}: {e}")
         return []
 
-DB = load_db()
-
-# -------------------- OpenAI client --------------------
-@st.cache_resource(show_spinner=False)
-def get_openai_client():
-    from openai import OpenAI
-    api_key = st.secrets["OPENAI_API_KEY"] if "OPENAI_API_KEY" in st.secrets else None
-    if not api_key:
-        return None, "Defina OPENAI_API_KEY em Secrets (Streamlit Cloud > App > Settings > Secrets)."
+def save_db(rows: List[Dict]) -> None:
     try:
-        client = OpenAI(api_key=api_key)
-        return client, None
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(rows, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        return None, f"Erro ao iniciar OpenAI: {e}"
+        st.error(f"Falha ao salvar {DATA_FILE}: {e}")
+        raise
 
-client, client_err = get_openai_client()
+def merge_by_name(db: List[Dict], new_rows: List[Dict]) -> Tuple[List[Dict], List[str], List[str], List[Dict]]:
+    """
+    Deduplicação por 'name' (casefold). Em conflito, preenche apenas campos vazios na base.
+    Retorna: (db_atualizada, nomes_adicionados, nomes_atualizados, itens_ignorados)
+    """
+    idx = { (r.get("name","")).casefold(): i for i, r in enumerate(db) }
+    added, updated, ignored = [], [], []
 
-# -------------------- Funções --------------------
-SYSTEM_PROMPT = """Você é o LauraBot. Responda em PT-BR, curto e útil.
-Baseie-se primeiro na base local (campos: name, address, cuisine, hours, price_level, description).
-Se faltar dado, explique brevemente a limitação. Evite inventar.
-Formato: liste 3–8 opções com 1–2 linhas por item.
-"""
-
-def build_context_snippets(query: str, max_items: int = 8):
-    """Busca simples na base local com tolerância a None e tipos variados."""
-    def as_str(x):
-        return "" if x is None else str(x)
-
-    def cuisine_as_str(v):
-        if v is None:
-            return ""
-        if isinstance(v, (list, tuple, set)):
-            return " ".join(as_str(x) for x in v if as_str(x))
-        return as_str(v)
-
-    q = (query or "").strip().lower()
-    if not q:
-        return []
-
-    scored = []
-    for r in (DB or []):
-        if not isinstance(r, dict):
+    for r in new_rows:
+        key = (r.get("name","")).casefold()
+        if not key:
+            ignored.append(r)
             continue
-        parts = [
-            as_str(r.get("name")),
-            as_str(r.get("address")),
-            cuisine_as_str(r.get("cuisine")),
-            as_str(r.get("hours")),
-            as_str(r.get("price_level")),
-            as_str(r.get("description")),
-        ]
-        blob = " ".join(parts).lower()
-        score = sum(token in blob for token in q.split())
-        if score:
-            scored.append((score, r))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [r for _, r in scored[:max_items]]
 
-def format_snippets(snips):
-    """Formata lista de restaurantes para exibir na UI."""
-    if not snips:
-        return "Nenhum item na base local para essa busca."
+        if key not in idx:
+            db.append(r)
+            idx[key] = len(db) - 1
+            added.append(r["name"])
+        else:
+            i = idx[key]
+            base = db[i]
+            changed = False
+            # apenas preenche campos vazios ou inexistentes
+            for fld in ("address","hours","price_level","highlights","description","neighborhood","cuisine","accepts_voucher","diet_options","accessibility"):
+                if (not base.get(fld)) and r.get(fld):
+                    base[fld] = r[fld]
+                    changed = True
+            if changed:
+                base["_updated_at"] = datetime.utcnow().isoformat() + "Z"
+                updated.append(r["name"])
+            else:
+                ignored.append(r)
+    return db, added, updated, ignored
+
+# ==================
+# Parser OFFLINE TXT
+# ==================
+
+def _clean_file_urls(text: str) -> str:
+    # remove lixo como file:///home/oai/redirect.html...
+    return re.sub(r"file:///[^\s]+", "", text)
+
+def offline_parse_txt(raw: str) -> List[Dict]:
+    """
+    Parser heurístico simples: espera 1 restaurante por bloco/parágrafo
+    (separado por uma linha em branco). Campos reconhecidos:
+    - name (primeira linha até ':', se existir)
+    - address (regex "Endereço:")
+    - hours (regex "Horário" / "Horários de funcionamento")
+    - price_level (regex "Faixa de preço:")
+    - highlights (regex "Destaques:")
+    Mantém o texto completo no campo "description".
+    """
+    raw = raw.replace("\r\n", "\n")
+    blocks = [b.strip() for b in re.split(r"\n{2,}", raw) if b.strip()]
     out = []
-    for r in snips:
-        cuisine = r.get("cuisine", [])
-        if not isinstance(cuisine, (list, tuple, set)):
-            cuisine = [cuisine] if cuisine else []
-        cuisine_str = ", ".join(str(x) for x in cuisine) or "cozinha não informada"
-        out.append(
-            f"**{r.get('name','(sem nome)')}** — {cuisine_str}\n"
-            f"{r.get('address','')} • {r.get('price_level','?')} • {r.get('hours','(horário não informado)')}\n"
-            f"_{r.get('description','')}_"
-        )
-    return "\n\n".join(out)
+    for b in blocks:
+        first = b.splitlines()[0].strip()
+        name = first.split(":", 1)[0].strip() if ":" in first else first
 
-def ask_openai(user_msg: str, context_snips: list, stream: bool = True):
-    """Chama OpenAI via Chat Completions (aceita 'messages')."""
-    if client is None:
-        raise RuntimeError(client_err or "OpenAI client não inicializado")
+        def g(rx):
+            m = re.search(rx, b, flags=re.I|re.M)
+            return m.group(1).strip() if m else None
 
-    def cuisine_to_str(v):
-        if v is None:
-            return ""
-        if isinstance(v, (list, tuple, set)):
-            return ", ".join(str(x) for x in v if str(x))
-        return str(v)
+        rec = {
+            "name": name,
+            "address": g(r"Endereç[oa]\s*:\s*(.+)"),
+            "neighborhood": "Pinheiros",
+            "cuisine": None,
+            "price_level": g(r"Faixa de pre[cç]o\s*:\s*([$\u0024]{1,4}|.+)"),
+            "accepts_voucher": None,
+            "diet_options": None,
+            "accessibility": None,
+            "highlights": [h.strip() for h in (g(r"Destaques?\s*:\s*(.+)") or "").split(",") if h.strip()] or None,
+            "description": _clean_file_urls(b),
+            "hours": _clean_file_urls(g(r"Hor[áa]rio[s]?(?: de funcionamento)?\s*:\s*(.+)") or "") or None,
+            "_source": "txt_import_offline",
+            "_imported_at": datetime.utcnow().isoformat() + "Z",
+        }
 
-    context_text = "\n\n".join(
-        [f"- {r.get('name','')} | {cuisine_to_str(r.get('cuisine'))} | "
-         f"{r.get('address','')} | {r.get('hours','')} | {r.get('price_level','')} | {r.get('description','')}"
-         for r in context_snips]
-    ) or "(sem correspondências locais)"
+        # limpeza adicional
+        for k in ("address","price_level"):
+            if rec.get(k):
+                rec[k] = _clean_file_urls(rec[k]).strip(" .;,")
 
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Pergunta: {user_msg}\n\nBase local (use com prioridade):\n{context_text}"},
-    ]
+        if rec["name"] and len(rec["name"]) >= 2:
+            out.append(rec)
+    return out
 
-    model_name = "gpt-4o-mini"  # ajuste conforme sua conta: "gpt-4o", "gpt-5", etc.
+# ===================
+# (Opcional) LLM parse
+# ===================
 
-    if stream:
-        return client.chat.completions.create(
-            model=model_name,
-            messages=messages,
-            temperature=0.2,
-            stream=True,
-        )
-    else:
-        resp = client.chat.completions.create(
-            model=model_name,
-            messages=messages,
-            temperature=0.2,
-        )
-        return resp.choices[0].message.content or ""
+def _get_openai_client():
+    """
+    Tenta criar cliente OpenAI se a flag estiver ativa e a lib instalada.
+    Suporta:
+      - openai>=1.0 (from openai import OpenAI)
+      - openai<1.0 (import openai; openai.ChatCompletion.create)
+    """
+    if not USE_LLM:
+        return None, "LLM desativado por flag."
+    # busca API KEY
+    api_key = None
+    try:
+        api_key = st.secrets.get("OPENAI_API_KEY", None)
+    except Exception:
+        pass
+    if not api_key:
+        api_key = os.getenv("OPENAI_API_KEY")
 
-# -------------------- UI --------------------
-st.title("LauraBot · Guia de Restaurantes em Pinheiros")
-st.caption("Pergunte por tipo de cozinha, rua, faixa de preço, horário, etc. (com OpenAI)")
+    if not api_key:
+        return None, "OPENAI_API_KEY não configurada."
+
+    # tenta import das libs
+    try:
+        from openai import OpenAI  # type: ignore
+        client = OpenAI(api_key=api_key)
+        return ("client_v1", client), None
+    except Exception:
+        pass
+
+    try:
+        import openai  # type: ignore
+        openai.api_key = api_key
+        return ("client_legacy", openai), None
+    except Exception as e:
+        return None, f"Biblioteca OpenAI não encontrada: {e}"
+
+def llm_parse_txt_to_records(raw: str) -> Tuple[List[Dict], Optional[str]]:
+    """
+    Chama LLM para extrair uma lista de registros. Retorna (records, error_msg)
+    O schema de saída espelha o offline para mesclar sem fricção.
+    """
+    client_tuple, err = _get_openai_client()
+    if err:
+        return [], err
+    mode, client = client_tuple
+
+    system = (
+        "Você é um extrator de dados para restaurantes em Pinheiros (São Paulo). "
+        "Receberá um texto livre com um ou mais restaurantes e deve retornar uma lista JSON de objetos "
+        "com os campos: name, address, neighborhood='Pinheiros', cuisine, price_level, accepts_voucher, "
+        "diet_options, accessibility, highlights (lista de strings), description (texto original do bloco), "
+        "hours. Não inclua URLs residuais como 'file:///...'. Não invente dados; deixe ausente se não houver."
+    )
+    user = (
+        "Extraia o máximo de campos por bloco de restaurante. "
+        "Considere que cada parágrafo é um restaurante. Texto a seguir:\n\n"
+        + raw
+    )
+
+    try:
+        if mode == "client_v1":
+            # SDK openai >= 1.0
+            resp = client.chat.completions.create(
+                model=os.getenv("OPENAI_MODEL", st.secrets.get("OPENAI_MODEL", "gpt-4o-mini")),
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                temperature=0.1,
+                response_format={"type": "json_object"},
+            )
+            content = resp.choices[0].message.content or "{}"
+        else:
+            # SDK legacy
+            resp = client.ChatCompletion.create(
+                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                temperature=0.1,
+            )
+            content = resp["choices"][0]["message"]["content"] or "{}"
+        # Espera um JSON com {"items": [ ... ]}
+        data = json.loads(content)
+        items = data.get("items")
+        if items is None:
+            # Tenta fallback: talvez o modelo retornou um array direto
+            if isinstance(data, list):
+                items = data
+            else:
+                # tenta detectar json no texto
+                match = re.search(r"\[[\s\S]*\]", content)
+                items = json.loads(match.group(0)) if match else []
+
+        # Sanitiza minimamente
+        out = []
+        for r in items:
+            if not isinstance(r, dict):
+                continue
+            r.setdefault("neighborhood", "Pinheiros")
+            r.setdefault("_source", "txt_import_llm")
+            r["_imported_at"] = datetime.utcnow().isoformat() + "Z"
+            # limpeza de file://
+            for k in ("address","price_level","hours","description"):
+                v = r.get(k)
+                if isinstance(v, str):
+                    r[k] = _clean_file_urls(v).strip(" .;,")
+            # garante highlights como lista
+            if "highlights" in r and isinstance(r["highlights"], str):
+                r["highlights"] = [h.strip() for h in r["highlights"].split(",") if h.strip()]
+            out.append(r)
+        return out, None
+    except Exception as e:
+        return [], f"Falha na extração via LLM: {e}"
+
+# ==========
+# Interface
+# ==========
+
+st.set_page_config(page_title="LauraBot - Pinheiros", layout="wide")
+
+st.title("LauraBot · Pinheiros")
+st.caption("Navegue e importe restaurantes. A base é um arquivo JSON local.")
 
 with st.sidebar:
-    st.header("Ferramentas")
-    st.markdown("- Base local: **pinheiros_restaurants.json**")
-    use_stream = st.toggle("Streaming de respostas", value=True)
-    st.divider()
-    st.subheader("Atualizar base (opcional)")
-    up = st.file_uploader("Envie um .txt com descrições (1 restaurante por parágrafo)", type=["txt"])
-    if up and st.button("Processar e atualizar JSON"):
-        st.info("Rotina de extração via LLM pode ser ligada aqui depois; mantendo offline por segurança.")
-        # Aqui você pode plugar um extrator usando o mesmo client, sem st.rerun em loop.
-
-if client_err:
-    st.warning(f"OpenAI: {client_err}")
-
-user_prompt = st.chat_input("O que você procura?")
-if user_prompt:
-    st.session_state.chat.append(("user", user_prompt))
-    snips = build_context_snippets(user_prompt)
-
-    # Contexto local (colapsado por padrão; mostra só 4 para aliviar mobile)
-    with st.expander("Ver itens da base local usados no contexto", expanded=False):
-        st.markdown(format_snippets(snips[:4]))
-
-    if client:
-        if use_stream:
-            # Streaming com throttle para reduzir repaints no iPhone
-            with st.chat_message("assistant"):
-                placeholder = st.empty()
-                acc = ""
-                last_paint_len = 0
-                paint_every = 120  # atualiza DOM a cada ~120 chars
-                try:
-                    stream = ask_openai(user_prompt, snips, stream=True)
-                    for chunk in stream:
-                        # chat.completions streaming: delta em choices[0].delta.content
-                        if not getattr(chunk, "choices", None):
-                            continue
-                        delta_obj = chunk.choices[0].delta
-                        delta = getattr(delta_obj, "content", None)
-                        if delta:
-                            acc += delta
-                            if len(acc) - last_paint_len >= paint_every:
-                                placeholder.markdown(acc)
-                                last_paint_len = len(acc)
-                    if len(acc) != last_paint_len:
-                        placeholder.markdown(acc)
-                    final_text = acc.strip() or "Sem resposta."
-                except Exception as e:
-                    final_text = f"Erro na chamada OpenAI: {e}"
-                st.session_state.chat.append(("assistant", final_text))
-        else:
-            try:
-                full = ask_openai(user_prompt, snips, stream=False)
-            except Exception as e:
-                full = f"Erro na chamada OpenAI: {e}"
-            st.session_state.chat.append(("assistant", full))
+    st.subheader("Status")
+    db = load_db()
+    st.metric("Registros na base", len(db))
+    if USE_LLM:
+        st.success("LLM: ATIVADO (importação por IA disponível)")
     else:
-        st.session_state.chat.append(("assistant", format_snippets(snips)))
+        st.info("LLM: DESATIVADO — importação roda **offline** por segurança.")
 
-# Limita histórico para não pesar render no mobile
-MAX_HISTORY = 20
-if len(st.session_state.chat) > MAX_HISTORY:
-    st.session_state.chat = st.session_state.chat[-MAX_HISTORY:]
+    st.divider()
+    st.subheader("Ações")
+    st.download_button("⬇️ Baixar base JSON", data=json.dumps(db, ensure_ascii=False, indent=2),
+                       file_name="pinheiros_restaurants.json", mime="application/json")
+    if st.button("🔎 Quais estão na base?"):
+        nomes = [r.get("name") for r in db if r.get("name")]
+        if nomes:
+            st.write(nomes)
+        else:
+            st.warning("Base vazia.")
 
-# Replay do histórico (idempotente)
-for role, content in st.session_state.chat:
-    with st.chat_message(role):
-        st.markdown(content)
+tabs = st.tabs(["📚 Base", "⬆️ Importar .txt", "🛠️ Ferramentas"])
 
-st.divider()
-st.caption(f"⏱️ Boot: {time.perf_counter() - _BOOT_T0:.2f}s • Py {sys.version.split()[0]}")
+# ---- Tab Base ----
+with tabs[0]:
+    st.subheader("Base de restaurantes (Pinheiros)")
+    q = st.text_input("Busca por nome / endereço / destaque")
+    show_raw = st.checkbox("Mostrar JSON bruto", value=False)
+    filtered = db
+    if q:
+        qcf = q.casefold()
+        def hit(r: Dict) -> bool:
+            blob = " ".join([
+                str(r.get("name","")),
+                str(r.get("address","")),
+                str(r.get("description","")),
+                " ".join(r.get("highlights", []) if isinstance(r.get("highlights"), list) else [])
+            ]).casefold()
+            return qcf in blob
+        filtered = [r for r in db if hit(r)]
+    st.caption(f"Mostrando {len(filtered)} de {len(db)} registros.")
+    for r in filtered:
+        with st.expander(r.get("name","(sem nome)")):
+            st.write(f"**Endereço:** {r.get('address','—')}")
+            st.write(f"**Bairro:** {r.get('neighborhood','—')}")
+            st.write(f"**Preço:** {r.get('price_level','—')}")
+            st.write(f"**Horários:** {r.get('hours','—')}")
+            if r.get("highlights"):
+                st.write("**Destaques:**", ", ".join(r["highlights"]) if isinstance(r["highlights"], list) else r["highlights"])
+            if show_raw:
+                st.json(r)
+
+# ---- Tab Importar ----
+with tabs[1]:
+    st.subheader("Importar restaurantes via .txt")
+    st.caption("Cada **parágrafo** deve representar um restaurante. O parser offline reconhece campos comuns (nome, endereço, horários, faixa de preço, destaques).")
+    upload = st.file_uploader("Selecione o arquivo .txt", type=["txt"])
+
+    if upload:
+        raw = upload.read().decode("utf-8", errors="replace")
+
+        st.caption("Pré-visualização do arquivo (primeiros 1200 caracteres):")
+        st.code(raw[:1200] + ("..." if len(raw) > 1200 else ""), language="markdown")
+
+        colA, colB = st.columns(2)
+        with colA:
+            st.markdown("**Modo OFFLINE (sem IA)**")
+            parsed_off = offline_parse_txt(raw)
+            st.info(f"Pré-análise offline: {len(parsed_off)} blocos reconhecidos.")
+            st.write(parsed_off[:3])
+
+            if st.button("➡️ Iniciar importação (offline)"):
+                with st.spinner("Importando (offline)…"):
+                    db_before = load_db()
+                    db_after, added, updated, ignored = merge_by_name(db_before, parsed_off)
+                    save_db(db_after)
+                    st.success(f"Importação concluída (OFFLINE). Novos: {len(added)} • Atualizados: {len(updated)} • Ignorados: {len(ignored)} • Total na base: {len(db_after)}")
+                    if added: st.write("**Adicionados:**", added[:20])
+                    if updated: st.write("**Atualizados:**", updated[:20])
+                    st.toast("Base atualizada com sucesso.", icon="✅")
+                    # força refresh do contador na sidebar
+                    time.sleep(0.25)
+                    st.rerun()
+
+        with colB:
+            st.markdown("**Modo LLM (quando ativado)**")
+            if not USE_LLM:
+                st.caption("Rotina de extração via LLM pode ser ligada depois; mantendo offline por segurança.")
+            else:
+                records_llm, err = llm_parse_txt_to_records(raw[:8000])  # limita o prompt
+                if err:
+                    st.error(err)
+                else:
+                    st.info(f"Pré-análise LLM: {len(records_llm)} blocos reconhecidos.")
+                    st.write(records_llm[:3])
+                    if st.button("➡️ Iniciar importação (LLM)"):
+                        with st.spinner("Importando (LLM)…"):
+                            db_before = load_db()
+                            db_after, added, updated, ignored = merge_by_name(db_before, records_llm)
+                            save_db(db_after)
+                            st.success(f"Importação concluída (LLM). Novos: {len(added)} • Atualizados: {len(updated)} • Ignorados: {len(ignored)} • Total na base: {len(db_after)}")
+                            if added: st.write("**Adicionados:**", added[:20])
+                            if updated: st.write("**Atualizados:**", updated[:20])
+                            st.toast("Base atualizada com sucesso.", icon="✅")
+                            time.sleep(0.25)
+                            st.rerun()
+    else:
+        st.caption("Nenhum arquivo selecionado ainda.")
+
+# ---- Tab Ferramentas ----
+with tabs[2]:
+    st.subheader("Ferramentas")
+    st.markdown(
+        "- **Download da base**: disponível na sidebar.\n"
+        "- **Alternar LLM**: defina `USE_LLM_EXTRACTOR=true` no `.streamlit/secrets.toml` ou `USE_LLM_EXTRACTOR=1` como variável de ambiente.\n"
+        "- **Chave OpenAI**: configure `OPENAI_API_KEY` (e opcionalmente `OPENAI_MODEL`) para usar o modo LLM.\n"
+        "- **Observações**: quando o LLM estiver desligado, a importação **offline** continua disponível normalmente."
+    )
+    st.code(
+        """
+# .streamlit/secrets.toml (exemplo)
+USE_LLM_EXTRACTOR = true
+OPENAI_API_KEY = "sk-..."
+OPENAI_MODEL = "gpt-4o-mini"
+        """.strip(),
+        language="toml",
+    )
